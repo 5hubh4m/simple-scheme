@@ -1,0 +1,27 @@
+name:                simple-scheme
+version:             0.1.0.0
+synopsis:            A simple scheme implementation in Haskell.
+description:         Please see README.md
+homepage:            https://github.com/5hubh4m/haScheme#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Shubham Chaudhary
+maintainer:          shubhamchaudhary1996@gmail.com
+copyright:           2016
+category:            System/Utilities
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable SimpleScheme
+  hs-source-dirs:      src
+  main-is:             Main.hs
+  other-modules:       SimpleEvaluator
+                     , SimpleParser
+                     , SimpleError
+                     , SimpleDefs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+                     , parsec
+                     , monads-tf
+                     , transformers
+                     , readline
