@@ -42,6 +42,10 @@ The source is divide into the following sections
 
 > Contains definitions for error handling functions.
 
+#### `SimpleEnv.hs`
+
+> Definitions for supporting mutable environment variables.
+
 #### `Main.hs`
 
 > Contains the REPL and main function.
