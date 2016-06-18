@@ -12,7 +12,7 @@ category:            System/Utilities
 build-type:          Simple
 cabal-version:       >=1.10
 
-executable SimpleScheme
+executable scheme
   hs-source-dirs:      src
   main-is:             Main.hs
   other-modules:       SimpleEvaluator

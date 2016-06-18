@@ -21,7 +21,7 @@ runOne :: String -> IO ()
 runOne expr = nullEnv >>= flip evalAndPrintExpr expr
 
 runREPL :: IO ()
-runREPL = nullEnv >>= untill_ ((==) "quit") (readPrompt "Lisp>> ") . evalAndPrintExpr
+runREPL = nullEnv >>= untill_ ((==) "quit") (readPrompt "Lisp >> ") . evalAndPrintExpr
 
 readExpr :: String -> ThrowsError LispVal
 readExpr input = case parse parseExpr "lisp" input of

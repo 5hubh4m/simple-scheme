@@ -20,7 +20,7 @@ Then the executable can be run by
 
 or
 
-> `stack exec SimpleScheme`
+> `stack exec scheme`
 
 ## Modules
 
