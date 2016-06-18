@@ -4,6 +4,7 @@ import SimpleDefs
 import SimpleParser
 import SimpleEvaluator
 import SimpleError
+import SimpleEnv
 import System.Environment (getArgs)
 import Control.Monad (liftM)
 import Text.ParserCombinators.Parsec (parse)
@@ -13,19 +14,22 @@ main :: IO ()
 main = do args <- getArgs
           case length args of
             0 -> runREPL
-            1 -> evalAndPrintExpr . head $ args
+            1 -> runOne $ head args
             otherwise -> putStrLn "Program takes only 0 or 1 argument"
 
+runOne :: String -> IO ()
+runOne expr = nullEnv >>= flip evalAndPrintExpr expr
+
 runREPL :: IO ()
-runREPL = untill_ ((==) "quit") (readPrompt "Lisp>> ") evalAndPrintExpr
+runREPL = nullEnv >>= untill_ ((==) "quit") (readPrompt "Lisp>> ") . evalAndPrintExpr
 
 readExpr :: String -> ThrowsError LispVal
 readExpr input = case parse parseExpr "lisp" input of
     Left err -> throwError $ Parser err
     Right val -> return val
 
-evalExpr :: String -> IO String
-evalExpr expr = return . extractValue . trapError $ liftM show $ readExpr expr >>= eval
+evalExpr :: Env -> String -> IO String
+evalExpr env expr = runIOThrows $ liftM show $ (liftThrows $ readExpr expr) >>= eval env
 
-evalAndPrintExpr :: String -> IO ()
-evalAndPrintExpr expr = evalExpr expr >>= putStrLn
+evalAndPrintExpr :: Env -> String -> IO ()
+evalAndPrintExpr env expr = evalExpr env expr >>= putStrLn

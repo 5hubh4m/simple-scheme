@@ -3,27 +3,33 @@ module SimpleEvaluator where
 import SimpleDefs
 import SimpleParser
 import SimpleError
+import SimpleEnv
 import Control.Monad (mapM, liftM)
 import Control.Monad.Error.Class
 
-eval :: LispVal -> ThrowsError LispVal
-eval x@(String _) = return x
-eval x@(Number _) = return x
-eval x@(Bool _) = return x
-eval (List [Atom "quote", x]) = return x
-eval (List [Atom "if", pred, conseq, alt]) = do result <- eval pred
-                                                if result == Bool False
-                                                then eval alt
-                                                else eval conseq
-eval (List ((Atom func):args)) = mapM eval args >>= apply func
-eval x@(List xs) = return x
-eval x@(DottedList xs y) = return x
-eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
+eval :: Env -> LispVal -> IOThrowsError LispVal
+eval _ x@(String _) = return x
+eval _ x@(Number _) = return x
+eval _ x@(Bool _) = return x
+eval env (Atom ref) = getVar env ref
+eval _ (List [Atom "quote", x]) = return x
+eval env (List [Atom "if", pred, conseq, alt]) = do result <- eval env pred
+                                                    if result == Bool False
+                                                    then eval env alt
+                                                    else eval env conseq
+eval env (List [Atom "define", Atom ref, val]) = eval env val >>= defineVar env ref
+eval env (List [Atom "set!", Atom ref, val]) = eval env val >>= setVar env ref
+eval env (List ((Atom func):args)) = mapM (eval env) args >>= (liftThrows . apply func)
+--eval env x@(List xs) = mapM (eval env) xs >>= return . List
+--eval env (DottedList xs y) = do lst <- mapM (eval env) xs
+--                                dot <- eval env y
+--                                return $ DottedList lst dot
+eval _ badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
 apply :: String -> [LispVal] -> ThrowsError LispVal
-apply func args = maybe 
-  (throwError $ NotFunction "Unrecognized primitive function args" func) 
-  ($ args) 
+apply func args = maybe
+  (throwError $ NotFunction "Unrecognized primitive function args" func)
+  ($ args)
   (lookup func primitives)
 
 primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
@@ -62,8 +68,8 @@ sub [] = throwError $ NumArgs 2 []
 sub [x] = unpackNum x >>= return . Number . ((-) 0)
 sub xs = numBinOp (-) xs
 
-boolOp :: (LispVal -> ThrowsError a) 
-       -> (a -> a -> Bool) 
+boolOp :: (LispVal -> ThrowsError a)
+       -> (a -> a -> Bool)
        -> ([LispVal] -> ThrowsError LispVal)
 boolOp _ _ [] =  throwError $ NumArgs 2 []
 boolOp _ _ x@[_] =  throwError $ NumArgs 2 x
@@ -73,7 +79,7 @@ boolOp unpack f args
                    right <- unpack $ args !! 1
                    return . Bool $ left `f` right
 
-numBinOp :: (Integer -> Integer -> Integer) 
+numBinOp :: (Integer -> Integer -> Integer)
          -> ([LispVal] -> ThrowsError LispVal)
 numBinOp _ [] = throwError $ NumArgs 2 []
 numBinOp _ x@[_] = throwError $ NumArgs 2 x
@@ -100,7 +106,7 @@ cons [x, y] = return $ DottedList [x] y
 cons badArgs = throwError $ NumArgs 2 badArgs
 
 eq :: [LispVal] -> ThrowsError LispVal
-eq [List xs, List ys] = do lst <- mapM (\(a, b) -> eq [a, b] >>= unpackBool) 
+eq [List xs, List ys] = do lst <- mapM (\(a, b) -> eq [a, b] >>= unpackBool)
                                        (zip xs ys)
                            return . Bool $ and lst
 eq [DottedList xs x, DottedList ys y] = eq [List (x : xs), List (y : ys)]
@@ -111,8 +117,8 @@ eq [Atom a, Atom b] = return . Bool $ a  == b
 eq [_, _] = return $ Bool False
 eq badArgs = throwError $ NumArgs 2 badArgs
 
-equal :: [LispVal] -> ThrowsError LispVal 
-equal [x, y] = do primitiveEquals <- liftM or $ mapM (unpackEquals x y) 
+equal :: [LispVal] -> ThrowsError LispVal
+equal [x, y] = do primitiveEquals <- liftM or $ mapM (unpackEquals x y)
                                                      unpackersList
 
                   eqvEquals <- eq [x, y] >>= unpackBool

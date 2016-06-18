@@ -2,8 +2,10 @@
 
 module SimpleDefs where
 
+import Data.IORef
 import System.Console.Readline (readline, addHistory)
 import Control.Monad.Error.Class
+import Control.Monad.Error
 import Text.ParserCombinators.Parsec hiding (spaces)
 
 data LispVal = Atom String
@@ -26,7 +28,7 @@ instance Show LispVal where
   show (Atom atm) = atm
   show (List lst) = "(" ++ unWordsList lst ++ ")"
   show (DottedList lst val) = "(" ++ unWordsList lst ++ " . " ++ show val ++ ")"
-    
+
 data LispError = NumArgs Integer [LispVal]
                | TypeMismatch String LispVal
                | Parser ParseError
@@ -44,16 +46,23 @@ instance Show LispError where
   show (NumArgs expected found ) = "Expected " ++ (show expected) ++ " args: found values " ++ (unWordsList found)
 
 instance Error LispError where
-  noMsg = Default "An error has occurred" 
+  noMsg = Default "An error has occurred"
   strMsg = Default
+
+type Env = IORef [(String, IORef LispVal)]
 
 type ThrowsError = Either LispError
 
 data Unpacker = forall a . Eq a => LispUnpacker (LispVal -> ThrowsError a)
 
+type IOThrowsError = ErrorT LispError IO
+
+nullEnv :: IO Env
+nullEnv = newIORef []
+
 unpackersList :: [Unpacker]
-unpackersList = [LispUnpacker unpackNum, 
-                 LispUnpacker unpackBool, 
+unpackersList = [LispUnpacker unpackNum,
+                 LispUnpacker unpackBool,
                  LispUnpacker unpackString]
 
 unWordsList :: [LispVal] -> String
@@ -62,7 +71,7 @@ unWordsList = unwords . map show
 unpackNum :: LispVal -> ThrowsError Integer
 unpackNum (Number n) = return n
 unpackNum x@(String str) = let lst = reads str :: [(Integer, String)] in
-                         if null lst                          
+                         if null lst
                          then throwError $ TypeMismatch "Number" x
                          else return $ fst . head $ lst
 unpackNum nan = throwError $ TypeMismatch "Number" nan

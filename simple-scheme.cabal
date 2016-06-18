@@ -2,7 +2,7 @@ name:                simple-scheme
 version:             0.1.0.0
 synopsis:            A simple scheme implementation in Haskell.
 description:         Please see README.md
-homepage:            https://github.com/5hubh4m/haScheme#readme
+homepage:            https://github.com/5hubh4m/simple-scheme#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Shubham Chaudhary
@@ -19,6 +19,7 @@ executable SimpleScheme
                      , SimpleParser
                      , SimpleError
                      , SimpleDefs
+                     , SimpleEnv
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
                      , parsec
