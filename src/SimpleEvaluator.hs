@@ -5,6 +5,7 @@ import SimpleParser
 import SimpleError
 import SimpleEnv
 import Control.Monad (mapM, liftM)
+import Control.Monad.Trans (liftIO)
 import Control.Monad.Error.Class
 
 eval :: Env -> LispVal -> IOThrowsError LispVal
@@ -12,52 +13,78 @@ eval _ x@(String _) = return x
 eval _ x@(Number _) = return x
 eval _ x@(Bool _) = return x
 eval env (Atom ref) = getVar env ref
-eval _ (List [Atom "quote", x]) = return x
-eval env (List [Atom "if", pred, conseq, alt]) = do result <- eval env pred
-                                                    if result == Bool False
-                                                    then eval env alt
-                                                    else eval env conseq
-eval env (List [Atom "define", Atom ref, val]) = eval env val >>= defineVar env ref
-eval env (List [Atom "set!", Atom ref, val]) = eval env val >>= setVar env ref
-eval env (List ((Atom func):args)) = mapM (eval env) args >>= (liftThrows . apply func)
+eval _ (List (Atom "quote" : x : [])) = return x
+eval env (List (Atom "if" : pred : conseq : alt : [])) = do result <- eval env pred
+                                                            case result of
+                                                              (Bool False) -> eval env alt
+                                                              otherwise -> eval env conseq
+eval env (List (Atom "define" : Atom ref : val : [])) = eval env val >>= defineVar env ref
+eval env (List (Atom "set!" : Atom ref : val : [])) = eval env val >>= setVar env ref
+eval env (List (Atom "define"
+              : List (Atom var : params)
+              : body)) = makeNormalFunc params body env >>= defineVar env var
+eval env (List (Atom "define"
+              : DottedList (Atom var : params) varargs
+              : body)) = makeVarArgFunc params varargs body env >>= defineVar env var
+eval env (List (Atom "lambda" : List params : body)) = makeNormalFunc params body env
+eval env (List (Atom "lambda" : DottedList params varargs : body)) = makeVarArgFunc params varargs body env
+eval env (List (Atom "lambda" : varargs@(Atom _) : body)) = makeVarArgFunc [] varargs body env
+eval env (List (func : args)) = do f <- eval env func
+                                   fargs <- mapM (eval env) args
+                                   apply f fargs
 --eval env x@(List xs) = mapM (eval env) xs >>= return . List
 --eval env (DottedList xs y) = do lst <- mapM (eval env) xs
 --                                dot <- eval env y
 --                                return $ DottedList lst dot
 eval _ badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
-apply :: String -> [LispVal] -> ThrowsError LispVal
-apply func args = maybe
-  (throwError $ NotFunction "Unrecognized primitive function args" func)
-  ($ args)
-  (lookup func primitives)
+apply :: LispVal -> [LispVal] -> IOThrowsError LispVal
+apply (PrimitiveFunc func) args = liftThrows $ func args
+apply (LispFunc params vararg body closure) args = if length args /= length params
+                                                   then throwError $ NumArgs (toInteger $ length params) args
+                                                   else do env1 <- liftIO $ bindVars closure $ zip params args
+                                                           env2 <- liftIO $ bindVars env1 $ case vararg of
+                                                             (Just var) -> [(var, List $ drop (length params) args)]
+                                                             Nothing -> []
+                                                           liftM last $ mapM (eval env2) body
 
 primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
-primitives = [("+", add),
-              ("-", sub),
-              ("*", numBinOp (*)),
-              ("/", numBinOp div),
+primitives = [("+",         add),
+              ("-",         sub),
+              ("*",         numBinOp (*)),
+              ("/",         numBinOp div),
               ("remainder", numBinOp rem),
-              ("quotient", numBinOp quot),
-              ("mod", numBinOp mod),
-              ("<", boolOp unpackNum (<)),
-              ("<=", boolOp unpackNum (<=)),
-              (">", boolOp unpackNum (>)),
-              (">", boolOp unpackNum (>=)),
-              ("=", boolOp unpackNum (==)),
-              ("/=", boolOp unpackNum (/=)),
-              ("&&", boolOp unpackBool (&&)),
-              ("||", boolOp unpackBool (||)),
-              ("string=?", boolOp unpackString (==)),
-              ("string?", boolOp unpackString (>)),
+              ("quotient",  numBinOp quot),
+              ("mod",       numBinOp mod),
+              ("<",         boolOp unpackNum (<)),
+              ("<=",        boolOp unpackNum (<=)),
+              (">",         boolOp unpackNum (>)),
+              (">",         boolOp unpackNum (>=)),
+              ("=",         boolOp unpackNum (==)),
+              ("/=",        boolOp unpackNum (/=)),
+              ("&&",        boolOp unpackBool (&&)),
+              ("||",        boolOp unpackBool (||)),
+              ("string=?",  boolOp unpackString (==)),
+              ("string?",   boolOp unpackString (>)),
               ("string<=?", boolOp unpackString (<=)),
               ("string>=?", boolOp unpackString (>=)),
-              ("car", car),
-              ("cdr", cdr),
-              ("cons", cons),
-              ("eq?", eq),
-              ("eqv?", eq),
-              ("equal?", equal)]
+              ("car",       car),
+              ("cdr",       cdr),
+              ("cons",      cons),
+              ("eq?",       eq),
+              ("eqv?",      eq),
+              ("equal?",    equal)]
+
+primitiveBindings :: IO Env
+primitiveBindings = nullEnv >>= (\a -> bindVars a $
+    map (\(x, y) -> (x, PrimitiveFunc y))
+    primitives)
+
+makeFunc :: Monad m => [LispVal] -> Maybe String -> [LispVal] -> Env -> m LispVal
+makeFunc params vararg body env = return $ LispFunc (map show params) vararg body env
+
+makeNormalFunc params body env = makeFunc params Nothing body env
+makeVarArgFunc params vararg body env = makeFunc params (Just $ show vararg) body env
 
 add, sub :: ([LispVal] -> ThrowsError LispVal)
 add [] = throwError $ NumArgs 2 []
@@ -118,9 +145,7 @@ eq [_, _] = return $ Bool False
 eq badArgs = throwError $ NumArgs 2 badArgs
 
 equal :: [LispVal] -> ThrowsError LispVal
-equal [x, y] = do primitiveEquals <- liftM or $ mapM (unpackEquals x y)
-                                                     unpackersList
-
+equal [x, y] = do primitiveEquals <- liftM or $ mapM (unpackEquals x y) unpackersList
                   eqvEquals <- eq [x, y] >>= unpackBool
                   return . Bool $ (primitiveEquals || eqvEquals)
 equal badArgList = throwError $ NumArgs 2 badArgList

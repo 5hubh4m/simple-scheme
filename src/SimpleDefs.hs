@@ -18,7 +18,13 @@ data LispVal = Atom String
             -- | Char Char
             | String String
             | Bool Bool
-        deriving (Eq)
+            | PrimitiveFunc ([LispVal] -> ThrowsError LispVal)
+            | LispFunc {
+                params  :: [String],
+                vararg  :: Maybe String,
+                body    :: [LispVal],
+                closure :: Env
+              }
 
 instance Show LispVal where
   show (String str) = "\"" ++ str ++ "\""
@@ -28,6 +34,10 @@ instance Show LispVal where
   show (Atom atm) = atm
   show (List lst) = "(" ++ unWordsList lst ++ ")"
   show (DottedList lst val) = "(" ++ unWordsList lst ++ " . " ++ show val ++ ")"
+  show (PrimitiveFunc _) = "<primitive>"
+  show (LispFunc args vararg body env) = "(lambda (" ++ unWordsList args ++ (case vararg of
+                                                                              Nothing -> ""
+                                                                              (Just arg) -> "." ++ arg) ++ ")...)"
 
 data LispError = NumArgs Integer [LispVal]
                | TypeMismatch String LispVal
@@ -65,7 +75,7 @@ unpackersList = [LispUnpacker unpackNum,
                  LispUnpacker unpackBool,
                  LispUnpacker unpackString]
 
-unWordsList :: [LispVal] -> String
+unWordsList :: Show a => [a] -> String
 unWordsList = unwords . map show
 
 unpackNum :: LispVal -> ThrowsError Integer

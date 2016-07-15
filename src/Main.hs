@@ -18,10 +18,10 @@ main = do args <- getArgs
             otherwise -> putStrLn "Program takes only 0 or 1 argument"
 
 runOne :: String -> IO ()
-runOne expr = nullEnv >>= flip evalAndPrintExpr expr
+runOne expr = primitiveBindings >>= flip evalAndPrintExpr expr
 
 runREPL :: IO ()
-runREPL = nullEnv >>= untill_ ((==) "quit") (readPrompt "Lisp >> ") . evalAndPrintExpr
+runREPL = primitiveBindings >>= untill_ ((==) "quit") (readPrompt "Lisp >> ") . evalAndPrintExpr
 
 readExpr :: String -> ThrowsError LispVal
 readExpr input = case parse parseExpr "lisp" input of
